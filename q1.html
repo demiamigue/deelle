@@ -1,0 +1,52 @@
+<!doctype html><html lang="es"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>P1 — Objeto en la cabeza</title>
+<link rel="stylesheet" href="style.css">
+<script defer src="state.js"></script>
+</head><body>
+<main class="wrap">
+  <div class="card">
+    <h1>1) ¿Qué objeto llevas en la cabeza hoy?</h1>
+    <div class="grid2">
+      <div>
+        <label for="headText">Palabra (breve)</label>
+        <input id="headText" maxlength="40" placeholder="velo, gorra, idea, nudo...">
+        <p class="hint">Puedes escribir literal o poético (máx. 40).</p>
+        <label>Subir foto (opcional)</label>
+        <input id="headFile" type="file" accept="image/*">
+        <p class="hint">Evita rostros identificables sin permiso.</p>
+      </div>
+      <div class="preview" id="prev">Sin imagen</div>
+    </div>
+    <div class="actions">
+      <a class="btn" href="index.html">← Volver</a>
+      <button class="btn primary" id="next">Siguiente →</button>
+    </div>
+  </div>
+</main>
+<script>
+const prev = document.getElementById('prev');
+let imgData = null;
+
+document.getElementById('headFile').addEventListener('change', e=>{
+  const f = e.target.files?.[0];
+  if(!f){ prev.textContent='Sin imagen'; imgData=null; return }
+  const img = new Image();
+  img.src = URL.createObjectURL(f);
+  img.onload = ()=>{
+    const c=document.createElement('canvas');
+    const max=900; let {width:w,height:h}=img;
+    const r=Math.min(max/w,max/h,1); c.width=w*r; c.height=h*r;
+    c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+    imgData = c.toDataURL('image/jpeg',0.85);
+    prev.innerHTML=''; img.style.maxWidth='100%'; img.style.borderRadius='10px'; prev.appendChild(img);
+  }
+});
+
+document.getElementById('next').addEventListener('click', ()=>{
+  const text = document.getElementById('headText').value.trim();
+  writeTmp({ headText: text, headImg: imgData || null });
+  location.href = 'q2.html';
+});
+</script>
+</body></html>
