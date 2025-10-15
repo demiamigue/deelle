@@ -1,12 +1,9 @@
 <!doctype html><html lang="es"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>P1 — Objeto en la cabeza </title>
+<title>P1 — Objeto en la cabeza</title>
 <link rel="stylesheet" href="style.css">
 <script defer src="state.js"></script>
-<style>
-  /* sólo para la vista espejo del preview */
-  #cam.mirror { transform: scaleX(-1); }
-</style>
+<style>#cam.mirror{transform:scaleX(-1);}</style>
 </head><body>
 <main class="wrap">
   <div class="card">
@@ -15,26 +12,17 @@
     <div class="grid2">
       <div>
         <label for="headText">Palabra (breve)</label>
-        <input id="headText" maxlength="40" placeholder="....">
-        <p class="hint"></p>
-
-        <label style="margin-top:10px"></label>
+        <input id="headText" maxlength="40" placeholder="velo, gorra, idea, nudo...">
+        <label style="margin-top:10px">Cámara en vivo</label>
         <div class="preview" style="padding:0">
           <video id="cam" playsinline autoplay muted style="width:100%;border-radius:12px;background:#000"></video>
         </div>
-
-        <div class="actions" style="margin-top:10px; gap:8px; flex-wrap:wrap">
+        <div class="actions" style="margin-top:10px;gap:8px;flex-wrap:wrap">
           <button class="btn" id="toggleFacing">↔︎ Cambiar cámara</button>
-        
           <button class="btn" id="capture">📸 Capturar foto</button>
         </div>
-
-        <p class="hint">
-          Consejos: en móvil, “Cambiar cámara” alterna frontal/trasera.
-          “Espejo” invierte la vista y también la foto resultante.
-        </p>
+        <p class="hint">En móvil, “Cambiar cámara” alterna frontal (espejo) y trasera (normal).</p>
       </div>
-
       <div>
         <label>Previsualización de la foto</label>
         <div class="preview" id="prev">Aún sin captura</div>
@@ -51,37 +39,33 @@
 <script>
 let imgData = null;
 const video = document.getElementById('cam');
-const prev  = document.getElementById('prev');
-const btnCap= document.getElementById('capture');
+const prev = document.getElementById('prev');
+const btnCap = document.getElementById('capture');
 const btnNext = document.getElementById('next');
 const btnFacing = document.getElementById('toggleFacing');
-const btnMirror = document.getElementById('toggleMirror');
 
 let currentStream;
-let facingMode = 'user';     // 'user' (frontal) | 'environment' (trasera)
-let mirrorOn   = true;       // espejo en vista y captura
+let facingMode = 'user';   // 'user' (frontal) | 'environment' (trasera)
+let mirrorOn = true;       // espejo si frontal
 
-async function startCamera(){
-  try{
-    // parar stream previo si existe
+async function startCamera() {
+  try {
     if (currentStream) currentStream.getTracks().forEach(t=>t.stop());
 
     const constraints = {
-      video: {
-        facingMode: { ideal: facingMode },
-        width: { ideal: 1280 },
-        height:{ ideal: 720 }
-      },
+      video: { facingMode: { ideal: facingMode }, width:{ideal:1280}, height:{ideal:720} },
       audio: false
     };
     const stream = await navigator.mediaDevices.getUserMedia(constraints);
     currentStream = stream;
     video.srcObject = stream;
 
-    // aplicar espejo visual solo si mirrorOn = true
-    if (mirrorOn) video.classList.add('mirror'); else video.classList.remove('mirror');
-  }catch(e){
+    // aplica espejo solo si estamos en frontal
+    mirrorOn = (facingMode === 'user');
+    video.classList.toggle('mirror', mirrorOn);
+  } catch (e) {
     alert('No se pudo acceder a la cámara. Revisa permisos o usa otro navegador.');
+    console.error(e);
   }
 }
 startCamera();
@@ -89,22 +73,12 @@ startCamera();
 // alternar frontal/trasera
 btnFacing.addEventListener('click', async ()=>{
   facingMode = (facingMode === 'user') ? 'environment' : 'user';
-  // por defecto activamos espejo en frontal y lo quitamos en trasera (puedes cambiarlo)
-  mirrorOn = (facingMode === 'user') ? true : false;
-  btnMirror.textContent = '⟲ Espejo: ' + (mirrorOn ? 'ON' : 'OFF');
   await startCamera();
 });
 
-// activar/desactivar espejo
-btnMirror.addEventListener('click', ()=>{
-  mirrorOn = !mirrorOn;
-  btnMirror.textContent = '⟲ Espejo: ' + (mirrorOn ? 'ON' : 'OFF');
-  if (mirrorOn) video.classList.add('mirror'); else video.classList.remove('mirror');
-});
-
-// capturar frame → JPEG (respetando espejo si está ON)
+// capturar frame → JPEG (si mirrorOn, capturamos espejado)
 btnCap.addEventListener('click', ()=>{
-  if(!video.videoWidth){ alert('La cámara aún no está lista.'); return; }
+  if (!video.videoWidth) { alert('La cámara aún no está lista.'); return; }
 
   const max = 1400;
   let w = video.videoWidth, h = video.videoHeight;
@@ -114,43 +88,34 @@ btnCap.addEventListener('click', ()=>{
   c.width = Math.round(w*r); c.height = Math.round(h*r);
   const cx = c.getContext('2d');
 
-  if (mirrorOn) {
-    // dibuja espejado
-    cx.translate(c.width, 0);
-    cx.scale(-1, 1);
-  }
+  if (mirrorOn) { cx.translate(c.width, 0); cx.scale(-1, 1); }
   cx.drawImage(video, 0, 0, c.width, c.height);
 
   imgData = c.toDataURL('image/jpeg', 0.9);
 
-  // previsualiza
   prev.innerHTML = '';
   const img = new Image();
   img.src = imgData; img.style.maxWidth='100%'; img.style.borderRadius='10px';
   prev.appendChild(img);
-
   btnNext.disabled = false;
 });
 
-// guardar y pasar a siguiente
+// guardar y pasar
 btnNext.addEventListener('click', ()=>{
   const text = document.getElementById('headText').value.trim();
-  // writeTmp viene de tu state.js; si no lo usas, sustituye por tu mecanismo de estado
   if (typeof writeTmp === 'function') {
     writeTmp({ headText: text, headImg: imgData || null });
   } else {
-    // fallback: guarda en sessionStorage
     sessionStorage.setItem('headText', text);
     sessionStorage.setItem('headImg', imgData || '');
   }
-
-  if(currentStream){ currentStream.getTracks().forEach(t=>t.stop()); }
+  if (currentStream) currentStream.getTracks().forEach(t=>t.stop());
   location.href = 'q2.html';
 });
 
-// detener cámara al salir
+// limpiar stream al salir
 window.addEventListener('pagehide', ()=>{
-  if(currentStream){ currentStream.getTracks().forEach(t=>t.stop()); }
+  if (currentStream) currentStream.getTracks().forEach(t=>t.stop());
 });
 </script>
 </body></html>
