@@ -1,8 +1,12 @@
 <!doctype html><html lang="es"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>P1 — Objeto en la cabeza (foto en vivo)</title>
+<title>P1 — Objeto en la cabeza </title>
 <link rel="stylesheet" href="style.css">
 <script defer src="state.js"></script>
+<style>
+  /* sólo para la vista espejo del preview */
+  #cam.mirror { transform: scaleX(-1); }
+</style>
 </head><body>
 <main class="wrap">
   <div class="card">
@@ -10,18 +14,25 @@
 
     <div class="grid2">
       <div>
-        <label for="headText"> pie de foto?</label>
+        <label for="headText">Palabra (breve)</label>
         <input id="headText" maxlength="40" placeholder="....">
-        
+        <p class="hint"></p>
 
-        <label style="margin-top:10px">Cámara en vivo</label>
+        <label style="margin-top:10px"></label>
         <div class="preview" style="padding:0">
-          <video id="cam" playsinline autoplay muted style="width:100%;border-radius:12px;display:block;background:#000"></video>
+          <video id="cam" playsinline autoplay muted style="width:100%;border-radius:12px;background:#000"></video>
         </div>
-        <div class="actions" style="margin-top:10px">
+
+        <div class="actions" style="margin-top:10px; gap:8px; flex-wrap:wrap">
+          <button class="btn" id="toggleFacing">↔︎ Cambiar cámara</button>
+          <button class="btn" id="toggleMirror">⟲ Espejo: ON</button>
           <button class="btn" id="capture">📸 Capturar foto</button>
         </div>
-        <p class="hint">Si el navegador pide permiso, acepta el uso de la cámara.</p>
+
+        <p class="hint">
+          Consejos: en móvil, “Cambiar cámara” alterna frontal/trasera.
+          “Espejo” invierte la vista y también la foto resultante.
+        </p>
       </div>
 
       <div>
@@ -43,36 +54,74 @@ const video = document.getElementById('cam');
 const prev  = document.getElementById('prev');
 const btnCap= document.getElementById('capture');
 const btnNext = document.getElementById('next');
+const btnFacing = document.getElementById('toggleFacing');
+const btnMirror = document.getElementById('toggleMirror');
 
-// pedir cámara (frontal por defecto)
 let currentStream;
-async function startCamera(facing='user'){
+let facingMode = 'user';     // 'user' (frontal) | 'environment' (trasera)
+let mirrorOn   = true;       // espejo en vista y captura
+
+async function startCamera(){
   try{
-    // corta stream previo si lo hay
-    if(currentStream){ currentStream.getTracks().forEach(t=>t.stop()); }
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: facing }, audio: false
-    });
+    // parar stream previo si existe
+    if (currentStream) currentStream.getTracks().forEach(t=>t.stop());
+
+    const constraints = {
+      video: {
+        facingMode: { ideal: facingMode },
+        width: { ideal: 1280 },
+        height:{ ideal: 720 }
+      },
+      audio: false
+    };
+    const stream = await navigator.mediaDevices.getUserMedia(constraints);
     currentStream = stream;
     video.srcObject = stream;
+
+    // aplicar espejo visual solo si mirrorOn = true
+    if (mirrorOn) video.classList.add('mirror'); else video.classList.remove('mirror');
   }catch(e){
     alert('No se pudo acceder a la cámara. Revisa permisos o usa otro navegador.');
   }
 }
-startCamera(); // inicia
+startCamera();
 
-// capturar frame → JPEG dataURL
+// alternar frontal/trasera
+btnFacing.addEventListener('click', async ()=>{
+  facingMode = (facingMode === 'user') ? 'environment' : 'user';
+  // por defecto activamos espejo en frontal y lo quitamos en trasera (puedes cambiarlo)
+  mirrorOn = (facingMode === 'user') ? true : false;
+  btnMirror.textContent = '⟲ Espejo: ' + (mirrorOn ? 'ON' : 'OFF');
+  await startCamera();
+});
+
+// activar/desactivar espejo
+btnMirror.addEventListener('click', ()=>{
+  mirrorOn = !mirrorOn;
+  btnMirror.textContent = '⟲ Espejo: ' + (mirrorOn ? 'ON' : 'OFF');
+  if (mirrorOn) video.classList.add('mirror'); else video.classList.remove('mirror');
+});
+
+// capturar frame → JPEG (respetando espejo si está ON)
 btnCap.addEventListener('click', ()=>{
   if(!video.videoWidth){ alert('La cámara aún no está lista.'); return; }
-  const c = document.createElement('canvas');
-  const max = 900;
-  // tamaño original del video
+
+  const max = 1400;
   let w = video.videoWidth, h = video.videoHeight;
   const r = Math.min(max/w, max/h, 1);
+
+  const c = document.createElement('canvas');
   c.width = Math.round(w*r); c.height = Math.round(h*r);
   const cx = c.getContext('2d');
+
+  if (mirrorOn) {
+    // dibuja espejado
+    cx.translate(c.width, 0);
+    cx.scale(-1, 1);
+  }
   cx.drawImage(video, 0, 0, c.width, c.height);
-  imgData = c.toDataURL('image/jpeg', 0.85);
+
+  imgData = c.toDataURL('image/jpeg', 0.9);
 
   // previsualiza
   prev.innerHTML = '';
@@ -86,13 +135,20 @@ btnCap.addEventListener('click', ()=>{
 // guardar y pasar a siguiente
 btnNext.addEventListener('click', ()=>{
   const text = document.getElementById('headText').value.trim();
-  writeTmp({ headText: text, headImg: imgData || null });
-  // opcional: parar la cámara antes de salir
+  // writeTmp viene de tu state.js; si no lo usas, sustituye por tu mecanismo de estado
+  if (typeof writeTmp === 'function') {
+    writeTmp({ headText: text, headImg: imgData || null });
+  } else {
+    // fallback: guarda en sessionStorage
+    sessionStorage.setItem('headText', text);
+    sessionStorage.setItem('headImg', imgData || '');
+  }
+
   if(currentStream){ currentStream.getTracks().forEach(t=>t.stop()); }
   location.href = 'q2.html';
 });
 
-// si navega atrás/adelante, parar cámara al salir de página
+// detener cámara al salir
 window.addEventListener('pagehide', ()=>{
   if(currentStream){ currentStream.getTracks().forEach(t=>t.stop()); }
 });
