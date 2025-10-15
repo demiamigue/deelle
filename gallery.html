@@ -6,10 +6,10 @@
 </head><body>
 <main class="wrap">
   <div class="card">
-    <h1>Archivo comunitario (prototipo local)</h1>
+    <h1>Archivo (prototipo)</h1>
     <div class="actions">
       <a class="btn" href="index.html">← Volver</a>
-      <button class="btn" id="clear">Vaciar (solo este navegador)</button>
+      <button class="btn" id="clear"></button>
     </div>
     <div id="list" class="grid2" style="margin-top:16px"></div>
   </div>
@@ -30,7 +30,7 @@ function render(){
           <div>${e.headImg? `<img src="${e.headImg}" alt="">` : '<div class="preview">sin imagen</div>'}</div>
           <div>${e.sndImg? `<img src="${e.sndImg}" alt="">` : '<div class="preview">sin imagen</div>'}</div>
         </div>
-        <p style="opacity:.7"><strong>Gesto invisible:</strong> ${e.ghost||'—'}</p>
+        <p style="opacity:.7"><strong> tu pie de foto?:</strong> ${e.ghost||'—'}</p>
         ${e.audio? `<audio controls src="${e.audio}"></audio>`:''}
       </div>`;
     list.appendChild(el);
