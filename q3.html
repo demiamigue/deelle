@@ -1,0 +1,35 @@
+<!doctype html><html lang="es"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>P3 — Gesto invisible</title>
+<link rel="stylesheet" href="style.css">
+<script defer src="state.js"></script>
+</head><body>
+<main class="wrap">
+  <div class="card">
+    <h1>3) Deja un gesto que no se ve</h1>
+    <label for="ghost">Palabra o frase mínima</label>
+    <input id="ghost" maxlength="60" placeholder="susurro / eco / latencia...">
+    <div class="actions">
+      <a class="btn" href="q2.html">← Volver</a>
+      <button class="btn primary" id="send">Enviar al archivo</button>
+    </div>
+    <p class="hint">Este MVP guarda en tu navegador. Luego podemos conectarlo a Supabase para archivo compartido.</p>
+  </div>
+</main>
+<script>
+document.getElementById('send').addEventListener('click', ()=>{
+  const tmp = readTmp();
+  const entry = {
+    t: new Date().toISOString(),
+    headText: tmp.headText||'',
+    headImg: tmp.headImg||null,
+    audio: tmp.audio||null,
+    sndImg: tmp.sndImg||null,
+    ghost: document.getElementById('ghost').value.trim()||''
+  };
+  saveToArchive(entry);
+  clearTmp();
+  location.href='gallery.html';
+});
+</script>
+</body></html>
