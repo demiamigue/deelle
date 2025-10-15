@@ -1,0 +1,80 @@
+<!doctype html><html lang="es"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>P2 — Sonido que piensas</title>
+<link rel="stylesheet" href="style.css">
+<script defer src="state.js"></script>
+</head><body>
+<main class="wrap">
+  <div class="card">
+    <h1>2) ¿Qué sonido piensas ahora?</h1>
+    <p>Graba 3 segundos. Generaremos una imagen de la onda.</p>
+    <div class="grid2">
+      <div>
+        <button class="btn" id="rec">● Grabar 3 s</button>
+        <p class="hint" id="hint">Pulsa “Grabar”, espera, y luego reproduce.</p>
+        <audio id="play" controls></audio>
+      </div>
+      <div>
+        <label>Imagen del sonido</label>
+        <canvas id="cv" width="640" height="180"></canvas>
+      </div>
+    </div>
+    <div class="actions">
+      <a class="btn" href="q1.html">← Volver</a>
+      <button class="btn primary" id="next">Siguiente →</button>
+    </div>
+  </div>
+</main>
+<script>
+const btn = document.getElementById('rec');
+const audioEl = document.getElementById('play');
+const cv = document.getElementById('cv'), cx=cv.getContext('2d');
+let audioDataUrl = null, imgDataUrl = null;
+
+btn.addEventListener('click', async ()=>{
+  btn.disabled=true; btn.textContent='Grabando...';
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+    const rec = new MediaRecorder(stream); const chunks=[];
+    rec.ondataavailable = e=>chunks.push(e.data);
+
+    // visualización
+    const ctx = new (window.AudioContext||window.webkitAudioContext)();
+    const src = ctx.createMediaStreamSource(stream);
+    const an = ctx.createAnalyser(); an.fftSize=2048; src.connect(an);
+    const buf = new Uint8Array(an.fftSize);
+    const start = performance.now();
+    (function draw(){
+      cx.clearRect(0,0,cv.width,cv.height);
+      an.getByteTimeDomainData(buf);
+      cx.beginPath(); const mid=cv.height/2; cx.moveTo(0,mid);
+      for(let x=0;x<cv.width;x++){
+        const i = Math.floor(x/cv.width*buf.length);
+        const v=(buf[i]-128)/128; const y = mid + v*(cv.height/2-10);
+        cx.lineTo(x,y);
+      }
+      cx.strokeStyle='#2F6B45'; cx.lineWidth=2; cx.stroke();
+      if(rec.state==='recording') requestAnimationFrame(draw);
+    })();
+
+    rec.start(); setTimeout(()=>rec.stop(), 3000);
+    rec.onstop = async ()=>{
+      stream.getTracks().forEach(t=>t.stop());
+      const blob = new Blob(chunks,{type:'audio/webm'});
+      audioDataUrl = await blobToDataURL(blob);
+      audioEl.src = audioDataUrl;
+      imgDataUrl = cv.toDataURL('image/png');
+      btn.textContent='● Grabar 3 s'; btn.disabled=false;
+    }
+  }catch(e){
+    alert('No se pudo acceder al micro. Puedes continuar sin audio.');
+    btn.textContent='● Grabar 3 s'; btn.disabled=false;
+  }
+});
+
+document.getElementById('next').addEventListener('click', ()=>{
+  writeTmp({ audio: audioDataUrl || null, sndImg: imgDataUrl || null });
+  location.href='q3.html';
+});
+</script>
+</body></html>
