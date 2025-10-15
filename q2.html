@@ -1,80 +1,92 @@
 <!doctype html><html lang="es"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>P2 — Sonido que piensas</title>
+<title>P2 — Movimiento</title>
 <link rel="stylesheet" href="style.css">
 <script defer src="state.js"></script>
 </head><body>
 <main class="wrap">
   <div class="card">
-    <h1>2) ¿Qué sonido piensas ahora?</h1>
-    <p>Graba 3 segundos. Generaremos una imagen de la onda.</p>
+    <h1>2) ¿qué movimiento ves?</h1>
+  
+
     <div class="grid2">
       <div>
-        <button class="btn" id="rec">● Grabar 3 s</button>
-        <p class="hint" id="hint">Pulsa “Grabar”, espera, y luego reproduce.</p>
-        <audio id="play" controls></audio>
+        <video id="cam" playsinline autoplay muted style="width:100%;border-radius:12px;background:#000"></video>
+        <div class="actions" style="margin-top:10px">
+          <button class="btn" id="rec">● Grabar</button>
+          <button class="btn" id="stop" disabled>■ Detener</button>
+        </div>
       </div>
+
       <div>
-        <label>Imagen del sonido</label>
-        <canvas id="cv" width="640" height="180"></canvas>
+        <label>Previsualización</label>
+        <div class="preview" id="prev">Aún sin vídeo</div>
       </div>
     </div>
+
     <div class="actions">
       <a class="btn" href="q1.html">← Volver</a>
-      <button class="btn primary" id="next">Siguiente →</button>
+      <button class="btn primary" id="next" disabled>Siguiente →</button>
     </div>
+    <p class="hint">El vídeo se guarda solo en tu navegador (prototipo local). Luego lo conectaremos a Supabase para archivo compartido.</p>
   </div>
 </main>
+
 <script>
-const btn = document.getElementById('rec');
-const audioEl = document.getElementById('play');
-const cv = document.getElementById('cv'), cx=cv.getContext('2d');
-let audioDataUrl = null, imgDataUrl = null;
+const video = document.getElementById('cam');
+const btnRec = document.getElementById('rec');
+const btnStop = document.getElementById('stop');
+const prev = document.getElementById('prev');
+const btnNext = document.getElementById('next');
 
-btn.addEventListener('click', async ()=>{
-  btn.disabled=true; btn.textContent='Grabando...';
+let recorder, stream, chunks=[], videoDataUrl=null;
+
+// iniciar cámara
+async function startCamera(){
   try{
-    const stream = await navigator.mediaDevices.getUserMedia({audio:true});
-    const rec = new MediaRecorder(stream); const chunks=[];
-    rec.ondataavailable = e=>chunks.push(e.data);
-
-    // visualización
-    const ctx = new (window.AudioContext||window.webkitAudioContext)();
-    const src = ctx.createMediaStreamSource(stream);
-    const an = ctx.createAnalyser(); an.fftSize=2048; src.connect(an);
-    const buf = new Uint8Array(an.fftSize);
-    const start = performance.now();
-    (function draw(){
-      cx.clearRect(0,0,cv.width,cv.height);
-      an.getByteTimeDomainData(buf);
-      cx.beginPath(); const mid=cv.height/2; cx.moveTo(0,mid);
-      for(let x=0;x<cv.width;x++){
-        const i = Math.floor(x/cv.width*buf.length);
-        const v=(buf[i]-128)/128; const y = mid + v*(cv.height/2-10);
-        cx.lineTo(x,y);
-      }
-      cx.strokeStyle='#2F6B45'; cx.lineWidth=2; cx.stroke();
-      if(rec.state==='recording') requestAnimationFrame(draw);
-    })();
-
-    rec.start(); setTimeout(()=>rec.stop(), 3000);
-    rec.onstop = async ()=>{
-      stream.getTracks().forEach(t=>t.stop());
-      const blob = new Blob(chunks,{type:'audio/webm'});
-      audioDataUrl = await blobToDataURL(blob);
-      audioEl.src = audioDataUrl;
-      imgDataUrl = cv.toDataURL('image/png');
-      btn.textContent='● Grabar 3 s'; btn.disabled=false;
-    }
+    stream = await navigator.mediaDevices.getUserMedia({ video:true, audio:true });
+    video.srcObject = stream;
   }catch(e){
-    alert('No se pudo acceder al micro. Puedes continuar sin audio.');
-    btn.textContent='● Grabar 3 s'; btn.disabled=false;
+    alert('No se pudo acceder a la cámara. Revisa permisos o usa otro navegador.');
   }
+}
+startCamera();
+
+// grabar
+btnRec.addEventListener('click', ()=>{
+  if(!stream){ alert('Cámara no disponible'); return; }
+  chunks = [];
+  recorder = new MediaRecorder(stream, { mimeType:'video/webm' });
+  recorder.ondataavailable = e=> chunks.push(e.data);
+  recorder.onstop = async ()=>{
+    const blob = new Blob(chunks, { type:'video/webm' });
+    videoDataUrl = await blobToDataURL(blob);
+    const v = document.createElement('video');
+    v.controls=true; v.src=videoDataUrl; v.style.width='100%'; v.style.borderRadius='12px';
+    prev.innerHTML=''; prev.appendChild(v);
+    btnNext.disabled=false;
+  };
+  recorder.start();
+  btnRec.disabled=true; btnStop.disabled=false;
+  setTimeout(()=>{ if(recorder.state==='recording'){ recorder.stop(); } }, 5000); // auto stop a los 5s
 });
 
-document.getElementById('next').addEventListener('click', ()=>{
-  writeTmp({ audio: audioDataUrl || null, sndImg: imgDataUrl || null });
+btnStop.addEventListener('click', ()=>{
+  if(recorder && recorder.state==='recording'){ recorder.stop(); }
+  btnRec.disabled=false; btnStop.disabled=true;
+});
+
+// pasar a siguiente
+btnNext.addEventListener('click', ()=>{
+  writeTmp({ videoClip: videoDataUrl || null });
+  // detener cámara
+  if(stream){ stream.getTracks().forEach(t=>t.stop()); }
   location.href='q3.html';
+});
+
+// detener cámara al salir
+window.addEventListener('pagehide', ()=>{
+  if(stream){ stream.getTracks().forEach(t=>t.stop()); }
 });
 </script>
 </body></html>
