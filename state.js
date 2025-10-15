@@ -1,20 +1,16 @@
-// claves
-const TMP_KEY = 'volar_tmp';
-const ARCHIVE_KEY = 'volar_archive';
+// state.js
+const SUPABASE_URL = 'https://armlsqgfnhkcdisesnuo.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFybWxzcWdmbmhrY2Rpc2VzbnVvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA1MTM5MjMsImV4cCI6MjA3NjA4OTkyM30.7iFS7n8IMaqTqG96wEjczTi5uSaRK-9dVUtmuXvke1Q';
 
-// helpers de estado temporal (entre páginas)
-function readTmp(){ try{ return JSON.parse(localStorage.getItem(TMP_KEY) || '{}'); }catch{ return {} } }
-function writeTmp(p){ const now = readTmp(); localStorage.setItem(TMP_KEY, JSON.stringify({...now, ...p})); }
-function clearTmp(){ localStorage.removeItem(TMP_KEY); }
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// guardar entrada completa en el archivo
-function saveToArchive(entry){
-  const all = JSON.parse(localStorage.getItem(ARCHIVE_KEY) || '[]');
-  all.unshift(entry);
-  localStorage.setItem(ARCHIVE_KEY, JSON.stringify(all));
+// 🚀 prueba de conexión:
+async function testConnection() {
+  const { data, error } = await supabase.from('archivo').select('*').limit(1);
+  if (error) {
+    console.error('❌ Error conectando con Supabase:', error.message);
+  } else {
+    console.log('✅ Conexión correcta a Supabase');
+  }
 }
-
-// util: convertir Blob→dataURL (para audio)
-function blobToDataURL(blob){
-  return new Promise(res=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.readAsDataURL(blob); });
-}
+testConnection();
