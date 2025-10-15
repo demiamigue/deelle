@@ -1,52 +1,100 @@
 <!doctype html><html lang="es"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>P1 — Objeto en la cabeza</title>
+<title>P1 — Objeto en la cabeza (foto en vivo)</title>
 <link rel="stylesheet" href="style.css">
 <script defer src="state.js"></script>
 </head><body>
 <main class="wrap">
   <div class="card">
     <h1>1) ¿Qué objeto llevas en la cabeza hoy?</h1>
+
     <div class="grid2">
       <div>
         <label for="headText">Palabra (breve)</label>
         <input id="headText" maxlength="40" placeholder="velo, gorra, idea, nudo...">
-        <p class="hint">Puedes escribir literal o poético (máx. 40).</p>
-        <label>Subir foto (opcional)</label>
-        <input id="headFile" type="file" accept="image/*">
-        <p class="hint">Evita rostros identificables sin permiso.</p>
+        <p class="hint">Escribe algo literal o poético (máx. 40).</p>
+
+        <label style="margin-top:10px">Cámara en vivo</label>
+        <div class="preview" style="padding:0">
+          <video id="cam" playsinline autoplay muted style="width:100%;border-radius:12px;display:block;background:#000"></video>
+        </div>
+        <div class="actions" style="margin-top:10px">
+          <button class="btn" id="capture">📸 Capturar foto</button>
+        </div>
+        <p class="hint">Si el navegador pide permiso, acepta el uso de la cámara.</p>
       </div>
-      <div class="preview" id="prev">Sin imagen</div>
+
+      <div>
+        <label>Previsualización de la foto</label>
+        <div class="preview" id="prev">Aún sin captura</div>
+      </div>
     </div>
+
     <div class="actions">
       <a class="btn" href="index.html">← Volver</a>
-      <button class="btn primary" id="next">Siguiente →</button>
+      <button class="btn primary" id="next" disabled>Siguiente →</button>
     </div>
   </div>
 </main>
-<script>
-const prev = document.getElementById('prev');
-let imgData = null;
 
-document.getElementById('headFile').addEventListener('change', e=>{
-  const f = e.target.files?.[0];
-  if(!f){ prev.textContent='Sin imagen'; imgData=null; return }
-  const img = new Image();
-  img.src = URL.createObjectURL(f);
-  img.onload = ()=>{
-    const c=document.createElement('canvas');
-    const max=900; let {width:w,height:h}=img;
-    const r=Math.min(max/w,max/h,1); c.width=w*r; c.height=h*r;
-    c.getContext('2d').drawImage(img,0,0,c.width,c.height);
-    imgData = c.toDataURL('image/jpeg',0.85);
-    prev.innerHTML=''; img.style.maxWidth='100%'; img.style.borderRadius='10px'; prev.appendChild(img);
+<script>
+let imgData = null;
+const video = document.getElementById('cam');
+const prev  = document.getElementById('prev');
+const btnCap= document.getElementById('capture');
+const btnNext = document.getElementById('next');
+
+// pedir cámara (frontal por defecto)
+let currentStream;
+async function startCamera(facing='user'){
+  try{
+    // corta stream previo si lo hay
+    if(currentStream){ currentStream.getTracks().forEach(t=>t.stop()); }
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: facing }, audio: false
+    });
+    currentStream = stream;
+    video.srcObject = stream;
+  }catch(e){
+    alert('No se pudo acceder a la cámara. Revisa permisos o usa otro navegador.');
   }
+}
+startCamera(); // inicia
+
+// capturar frame → JPEG dataURL
+btnCap.addEventListener('click', ()=>{
+  if(!video.videoWidth){ alert('La cámara aún no está lista.'); return; }
+  const c = document.createElement('canvas');
+  const max = 900;
+  // tamaño original del video
+  let w = video.videoWidth, h = video.videoHeight;
+  const r = Math.min(max/w, max/h, 1);
+  c.width = Math.round(w*r); c.height = Math.round(h*r);
+  const cx = c.getContext('2d');
+  cx.drawImage(video, 0, 0, c.width, c.height);
+  imgData = c.toDataURL('image/jpeg', 0.85);
+
+  // previsualiza
+  prev.innerHTML = '';
+  const img = new Image();
+  img.src = imgData; img.style.maxWidth='100%'; img.style.borderRadius='10px';
+  prev.appendChild(img);
+
+  btnNext.disabled = false;
 });
 
-document.getElementById('next').addEventListener('click', ()=>{
+// guardar y pasar a siguiente
+btnNext.addEventListener('click', ()=>{
   const text = document.getElementById('headText').value.trim();
   writeTmp({ headText: text, headImg: imgData || null });
+  // opcional: parar la cámara antes de salir
+  if(currentStream){ currentStream.getTracks().forEach(t=>t.stop()); }
   location.href = 'q2.html';
+});
+
+// si navega atrás/adelante, parar cámara al salir de página
+window.addEventListener('pagehide', ()=>{
+  if(currentStream){ currentStream.getTracks().forEach(t=>t.stop()); }
 });
 </script>
 </body></html>
