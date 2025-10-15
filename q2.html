@@ -1,21 +1,26 @@
 <!doctype html><html lang="es"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>P2 — Movimiento</title>
+<title>P2 — Movimiento o gesto que piensas ahora</title>
 <link rel="stylesheet" href="style.css">
 <script defer src="state.js"></script>
+<style>
+  #cam.mirror { transform: scaleX(-1); } /* sólo vista previa */
+</style>
 </head><body>
 <main class="wrap">
   <div class="card">
-    <h1>2) ¿qué movimiento ves?</h1>
-  
+    <h1>2) ¿Qué movimiento o gesto piensas ahora?</h1>
+    <p>Graba un breve vídeo (3–5 s). Usa la frontal (selfie, espejo) o cambia a la trasera.</p>
 
     <div class="grid2">
       <div>
         <video id="cam" playsinline autoplay muted style="width:100%;border-radius:12px;background:#000"></video>
-        <div class="actions" style="margin-top:10px">
+        <div class="actions" style="margin-top:10px;gap:8px;flex-wrap:wrap">
+          <button class="btn" id="toggleFacing">↔︎ Cambiar cámara</button>
           <button class="btn" id="rec">● Grabar</button>
           <button class="btn" id="stop" disabled>■ Detener</button>
         </div>
+        <p class="hint" id="hint">Pulsa “Grabar”, vuelve a “Detener” o espera el autostop a los 5 s.</p>
       </div>
 
       <div>
@@ -28,65 +33,153 @@
       <a class="btn" href="q1.html">← Volver</a>
       <button class="btn primary" id="next" disabled>Siguiente →</button>
     </div>
-    <p class="hint">El vídeo se guarda solo en tu navegador (prototipo local). Luego lo conectaremos a Supabase para archivo compartido.</p>
   </div>
 </main>
 
 <script>
-const video = document.getElementById('cam');
-const btnRec = document.getElementById('rec');
-const btnStop = document.getElementById('stop');
-const prev = document.getElementById('prev');
-const btnNext = document.getElementById('next');
+const videoEl   = document.getElementById('cam');
+const btnFacing = document.getElementById('toggleFacing');
+const btnRec    = document.getElementById('rec');
+const btnStop   = document.getElementById('stop');
+const btnNext   = document.getElementById('next');
+const prev      = document.getElementById('prev');
+const hint      = document.getElementById('hint');
 
-let recorder, stream, chunks=[], videoDataUrl=null;
+let facingMode = 'user';        // 'user' (frontal) | 'environment' (trasera)
+let mirrorOn   = true;          // sólo en frontal
+let camStream  = null;          // stream de la cámara
+let recorder   = null;          // MediaRecorder en uso
+let chunks     = [];            // datos grabados
+let rafId      = null;          // id del requestAnimationFrame del pipeline espejo
+let pipedStream= null;          // stream del canvas (cuando espejo)
+let videoDataUrl = null;
 
-// iniciar cámara
+// inicia/renueva la cámara
 async function startCamera(){
   try{
-    stream = await navigator.mediaDevices.getUserMedia({ video:true, audio:true });
-    video.srcObject = stream;
+    stopAll();
+    camStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: facingMode }, width:{ideal:1280}, height:{ideal:720} },
+      audio: true
+    });
+    videoEl.srcObject = camStream;
+
+    mirrorOn = (facingMode === 'user');
+    videoEl.classList.toggle('mirror', mirrorOn);
   }catch(e){
-    alert('No se pudo acceder a la cámara. Revisa permisos o usa otro navegador.');
+    alert('No se pudo acceder a la cámara. Revisa permisos/permisos del navegador.');
+    console.error(e);
   }
 }
 startCamera();
 
-// grabar
-btnRec.addEventListener('click', ()=>{
-  if(!stream){ alert('Cámara no disponible'); return; }
+// alternar frontal/trasera
+btnFacing.addEventListener('click', async ()=>{
+  facingMode = (facingMode === 'user') ? 'environment' : 'user';
+  await startCamera();
+});
+
+// crea un pipeline espejo con canvas y devuelve {stream, stopFn}
+function buildMirroredStream(sourceVideo, sourceStream){
+  const vw = sourceVideo.videoWidth  || 640;
+  const vh = sourceVideo.videoHeight || 360;
+  const canvas = document.createElement('canvas');
+  canvas.width = vw; canvas.height = vh;
+  const ctx = canvas.getContext('2d');
+
+  function draw(){
+    ctx.save();
+    ctx.translate(canvas.width, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(sourceVideo, 0, 0, canvas.width, canvas.height);
+    ctx.restore();
+    rafId = requestAnimationFrame(draw);
+  }
+  draw();
+
+  const stream = canvas.captureStream(30); // vídeo del canvas
+  // añade la pista de audio original si existe
+  try{
+    const audioTrack = sourceStream.getAudioTracks()[0];
+    if (audioTrack) stream.addTrack(audioTrack);
+  }catch(_){}
+  const stopFn = ()=>{ if(rafId) cancelAnimationFrame(rafId); };
+
+  return {stream, stopFn};
+}
+
+// comenzar grabación
+btnRec.addEventListener('click', async ()=>{
+  if(!camStream){ alert('No hay cámara'); return; }
   chunks = [];
-  recorder = new MediaRecorder(stream, { mimeType:'video/webm' });
+  btnRec.disabled = true; btnStop.disabled = true; // se habilita cuando hay stream listo
+
+  // Asegura que el <video> está listo para conocer dimensiones
+  if (!videoEl.videoWidth){ await new Promise(r=> setTimeout(r, 200)); }
+
+  let streamToRecord = camStream;
+  let stopMirror = null;
+
+  if (facingMode === 'user'){ // frontal → espejo real en el archivo
+    const built = buildMirroredStream(videoEl, camStream);
+    streamToRecord = built.stream;
+    stopMirror = built.stopFn;
+  }
+
+  recorder = new MediaRecorder(streamToRecord, { mimeType: 'video/webm' });
   recorder.ondataavailable = e=> chunks.push(e.data);
   recorder.onstop = async ()=>{
+    if (stopMirror) stopMirror();
     const blob = new Blob(chunks, { type:'video/webm' });
     videoDataUrl = await blobToDataURL(blob);
+
     const v = document.createElement('video');
-    v.controls=true; v.src=videoDataUrl; v.style.width='100%'; v.style.borderRadius='12px';
-    prev.innerHTML=''; prev.appendChild(v);
-    btnNext.disabled=false;
+    v.controls = true; v.src = videoDataUrl;
+    v.style.width='100%'; v.style.borderRadius='12px';
+    prev.innerHTML = ''; prev.appendChild(v);
+    btnNext.disabled = false;
   };
+
   recorder.start();
-  btnRec.disabled=true; btnStop.disabled=false;
-  setTimeout(()=>{ if(recorder.state==='recording'){ recorder.stop(); } }, 5000); // auto stop a los 5s
+  hint.textContent = 'Grabando…';
+  btnStop.disabled = false;
+
+  // autostop a los 5s
+  setTimeout(()=>{
+    if (recorder && recorder.state === 'recording'){ recorder.stop(); hint.textContent='Grabación finalizada'; }
+    btnRec.disabled = false; btnStop.disabled = true;
+  }, 5000);
 });
 
 btnStop.addEventListener('click', ()=>{
-  if(recorder && recorder.state==='recording'){ recorder.stop(); }
-  btnRec.disabled=false; btnStop.disabled=true;
+  if (recorder && recorder.state === 'recording'){
+    recorder.stop(); hint.textContent='Grabación finalizada';
+  }
+  btnRec.disabled = false; btnStop.disabled = true;
 });
 
-// pasar a siguiente
+// guardar y pasar
 btnNext.addEventListener('click', ()=>{
-  writeTmp({ videoClip: videoDataUrl || null });
-  // detener cámara
-  if(stream){ stream.getTracks().forEach(t=>t.stop()); }
+  if (typeof writeTmp === 'function') {
+    writeTmp({ videoClip: videoDataUrl || null });
+  } else {
+    sessionStorage.setItem('videoClip', videoDataUrl || '');
+  }
+  stopAll();
   location.href='q3.html';
 });
 
-// detener cámara al salir
-window.addEventListener('pagehide', ()=>{
-  if(stream){ stream.getTracks().forEach(t=>t.stop()); }
-});
+function stopAll(){
+  if (recorder && recorder.state === 'recording'){ recorder.stop(); }
+  if (camStream){ camStream.getTracks().forEach(t=>t.stop()); camStream=null; }
+  if (rafId){ cancelAnimationFrame(rafId); rafId=null; }
+}
+
+window.addEventListener('pagehide', stopAll);
+
+// util (misma que usas en state.js para audio/fotos)
+function blobToDataURL(blob){
+  return new Promise(res=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.readAsDataURL(blob); });
+}
 </script>
 </body></html>
