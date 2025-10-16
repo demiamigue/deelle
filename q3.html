@@ -1,35 +1,115 @@
 <!doctype html><html lang="es"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>P3 —</title>
+<title>P3 — Enviar al archivo</title>
 <link rel="stylesheet" href="style.css">
+<!-- carga supabase y tu state.js para tener supabase disponible -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script defer src="state.js"></script>
 </head><body>
 <main class="wrap">
   <div class="card">
     <h1>3) escribe el sonido </h1>
-    <label for="ghost">Palabra </label>
-    <input id="ghost" maxlength="60" placeholder=".....">
-    <div class="actions">
+
+    <label for="ghost"></label>
+    <input id="ghost" maxlength="60" placeholder="....">
+
+    <div class="actions" style="margin-top:16px">
       <a class="btn" href="q2.html">← Volver</a>
       <button class="btn primary" id="send">Enviar al archivo</button>
     </div>
-    <p class="hint">Este MVP guarda en tu navegador. Luego podemos conectarlo a Supabase para archivo compartido.</p>
+
+    <p class="hint">Se intentará guardar en el archivo comunitario (Supabase). Si no es posible, se guardará localmente como copia de seguridad y verás el resultado en la galería igualmente.</p>
   </div>
 </main>
+
 <script>
-document.getElementById('send').addEventListener('click', ()=>{
-  const tmp = readTmp();
-  const entry = {
-    t: new Date().toISOString(),
-    headText: tmp.headText||'',
-    headImg: tmp.headImg||null,
-    audio: tmp.audio||null,
-    sndImg: tmp.sndImg||null,
-    ghost: document.getElementById('ghost').value.trim()||''
+// Utilidades de respaldo por si no hay writeTmp/readTmp
+function getTmp() {
+  // si alguien dejó writeTmp/readTmp, intenta leer de ahí
+  try {
+    if (typeof readTmp === 'function') {
+      const t = readTmp();
+      if (t && (t.headText || t.headImg || t.videoClip)) return t;
+    }
+  } catch {}
+  // fallback a sessionStorage
+  return {
+    headText: sessionStorage.getItem('headText') || '',
+    headImg:  sessionStorage.getItem('headImg')  || null,
+    videoClip:sessionStorage.getItem('videoClip')|| null
   };
-  saveToArchive(entry);
-  clearTmp();
-  location.href='gallery.html';
+}
+
+function clearTmpAll() {
+  try { if (typeof clearTmp === 'function') clearTmp(); } catch {}
+  sessionStorage.removeItem('headText');
+  sessionStorage.removeItem('headImg');
+  sessionStorage.removeItem('videoClip');
+}
+
+// Copia de seguridad local por si no hay Supabase
+function saveLocalBackup(entry){
+  const KEY = 'volar_archive';
+  const all = JSON.parse(localStorage.getItem(KEY) || '[]');
+  all.unshift(entry);
+  localStorage.setItem(KEY, JSON.stringify(all));
+}
+
+async function sendEntry() {
+  const ghost = (document.getElementById('ghost').value || '').trim();
+  const tmp = getTmp();
+
+  const entry = {
+    created_at: new Date().toISOString(),
+    headText: tmp.headText || '',
+    headImg: tmp.headImg || null,
+    videoClip: tmp.videoClip || null,
+    ghost: ghost
+  };
+
+  let supabaseOk = false;
+
+  // Intentar guardar en Supabase si está disponible
+  if (window.supabase) {
+    try {
+      const { error } = await supabase
+        .from('archivo')
+        .insert({
+          headText: entry.headText,
+          headImg: entry.headImg,
+          videoClip: entry.videoClip,
+          ghost: entry.ghost
+        });
+      if (error) {
+        console.warn('Supabase insert error:', error.message);
+      } else {
+        supabaseOk = true;
+      }
+    } catch (e) {
+      console.warn('Supabase not reachable:', e);
+    }
+  }
+
+  // Si Supabase no funcionó, guardar localmente
+  if (!supabaseOk) {
+    saveLocalBackup(entry);
+  }
+
+  // Limpiar estado temporal y redirigir SIEMPRE
+  clearTmpAll();
+  location.href = 'gallery.html';
+}
+
+document.getElementById('send').addEventListener('click', async ()=>{
+  const btn = document.getElementById('send');
+  btn.disabled = true; btn.textContent = 'Enviando…';
+  try {
+    await sendEntry();
+  } catch (e) {
+    console.error(e);
+    // aun así, intenta navegar para que veas algo en la galería local
+    location.href = 'gallery.html';
+  }
 });
 </script>
 </body></html>
