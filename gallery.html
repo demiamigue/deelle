@@ -1,45 +1,84 @@
 <!doctype html><html lang="es"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Archivo — Volar en pantalla</title>
+<title>Archivo (prototipo)</title>
 <link rel="stylesheet" href="style.css">
-<script defer src="state.js"></script>
 </head><body>
 <main class="wrap">
   <div class="card">
     <h1>Archivo (prototipo)</h1>
     <div class="actions">
       <a class="btn" href="index.html">← Volver</a>
-      <button class="btn" id="clear"></button>
     </div>
     <div id="list" class="grid2" style="margin-top:16px"></div>
   </div>
 </main>
+
+<!-- Supabase + tu conexión -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="state.js"></script>
 <script>
-const list = document.getElementById('list');
-function render(){
-  const all = JSON.parse(localStorage.getItem('volar_archive') || '[]');
-  list.innerHTML='';
-  if(!all.length){ list.innerHTML='<p>No hay aportes aún.</p>'; return }
-  all.forEach(e=>{
-    const el = document.createElement('div'); el.className='tile';
-    el.innerHTML = `
-      <header><strong>${new Date(e.t).toLocaleString()}</strong></header>
+// formateo de fecha con “fallbacks”
+function fmtDate(row){
+  const ts = row.created_at || row.inserted_at || row.createdAt || row.date || null;
+  if (!ts) return '';
+  const d = new Date(ts);
+  return isNaN(d) ? '' : d.toLocaleString();
+}
+
+// lee respaldo local (opcional)
+function readLocalBackup(){
+  try { return JSON.parse(localStorage.getItem('volar_archive') || '[]'); }
+  catch { return []; }
+}
+
+async function render(){
+  const list = document.getElementById('list');
+  list.innerHTML = '<p class="hint">Cargando archivo…</p>';
+
+  let rows = [];
+
+  // 1) SUPABASE (lo importante, compartido para todxs)
+  if (window.supabase){
+    const { data, error } = await supabase
+      .from('archivo')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error){
+      console.warn('Supabase SELECT error:', error.message);
+    } else if (Array.isArray(data)) {
+      rows = data;
+    }
+  }
+
+  // 2) (opcional) Mezclamos respaldo local al final
+  const local = readLocalBackup();
+  if (local.length) rows = [...rows, ...local];
+
+  // Pintar
+  list.innerHTML = '';
+  if (!rows.length){
+    list.innerHTML = '<p class="hint">Aún no hay aportes en el archivo.</p>';
+    return;
+  }
+
+  rows.forEach(e=>{
+    const when = fmtDate(e);
+    const tile = document.createElement('div');
+    tile.className = 'tile';
+    tile.innerHTML = `
+      <header><strong>${when || ''}</strong></header>
       <div class="content">
-        <p><strong>Objeto cabeza:</strong> ${e.headText||'—'}</p>
-        <div class="grid2">
-          <div>${e.headImg? `<img src="${e.headImg}" alt="">` : '<div class="preview">sin imagen</div>'}</div>
-          <div>${e.sndImg? `<img src="${e.sndImg}" alt="">` : '<div class="preview">sin imagen</div>'}</div>
+        <p><strong>Objeto cabeza:</strong> ${e.headText || '—'}</p>
+        <div class="grid2" style="gap:12px">
+          <div>${e.headImg ? `<img src="${e.headImg}" alt="" style="max-width:100%;border-radius:10px">` : ''}</div>
+          <div>${e.videoClip ? `<video controls src="${e.videoClip}" style="width:100%;border-radius:10px"></video>` : ''}</div>
         </div>
-        <p style="opacity:.7"><strong> tu pie de foto?:</strong> ${e.ghost||'—'}</p>
-        ${e.audio? `<audio controls src="${e.audio}"></audio>`:''}
+        ${e.ghost ? `<p style="opacity:.75;margin-top:8px"><strong> tu pie de foto?:</strong> ${e.ghost}</p>` : ''}
       </div>`;
-    list.appendChild(el);
+    list.appendChild(tile);
   });
 }
 render();
-
-document.getElementById('clear').addEventListener('click', ()=>{
-  if(confirm('¿Vaciar archivo local?')){ localStorage.removeItem('volar_archive'); render(); }
-});
 </script>
 </body></html>
