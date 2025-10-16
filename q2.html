@@ -1,16 +1,13 @@
 <!doctype html><html lang="es"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>P2 — Movimiento o gesto que piensas ahora</title>
+<title>P2 — en movimiento </title>
 <link rel="stylesheet" href="style.css">
 <script defer src="state.js"></script>
-<style>
-  #cam.mirror { transform: scaleX(-1); } /* sólo vista previa */
-</style>
+<style>#cam.mirror{transform:scaleX(-1);}</style>
 </head><body>
 <main class="wrap">
   <div class="card">
-    <h1>2) ¿Qué movimiento o gesto piensas ahora?</h1>
-    <p>Graba un breve vídeo (3–5 s). Usa la frontal (selfie, espejo) o cambia a la trasera.</p>
+    <h1>2) en movimiento </h1>
 
     <div class="grid2">
       <div>
@@ -20,7 +17,7 @@
           <button class="btn" id="rec">● Grabar</button>
           <button class="btn" id="stop" disabled>■ Detener</button>
         </div>
-        <p class="hint" id="hint">Pulsa “Grabar”, vuelve a “Detener” o espera el autostop a los 5 s.</p>
+        <p class="hint" id="hint">Pulsa “Grabar”, luego “Detener” o espera el autostop a los 5 s.</p>
       </div>
 
       <div>
@@ -45,41 +42,36 @@ const btnNext   = document.getElementById('next');
 const prev      = document.getElementById('prev');
 const hint      = document.getElementById('hint');
 
-let facingMode = 'user';        // 'user' (frontal) | 'environment' (trasera)
-let mirrorOn   = true;          // sólo en frontal
-let camStream  = null;          // stream de la cámara
-let recorder   = null;          // MediaRecorder en uso
-let chunks     = [];            // datos grabados
-let rafId      = null;          // id del requestAnimationFrame del pipeline espejo
-let pipedStream= null;          // stream del canvas (cuando espejo)
+let facingMode = 'user';   // 'user' (frontal) | 'environment' (trasera)
+let camStream  = null;
+let recorder   = null;
+let chunks     = [];
+let rafId      = null;
 let videoDataUrl = null;
 
-// inicia/renueva la cámara
 async function startCamera(){
   try{
     stopAll();
     camStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: facingMode }, width:{ideal:1280}, height:{ideal:720} },
+      video: { facingMode:{ ideal:facingMode }, width:{ideal:1280}, height:{ideal:720} },
       audio: true
     });
     videoEl.srcObject = camStream;
-
-    mirrorOn = (facingMode === 'user');
-    videoEl.classList.toggle('mirror', mirrorOn);
+    // espejo solo en frontal (vista previa)
+    videoEl.classList.toggle('mirror', facingMode==='user');
   }catch(e){
-    alert('No se pudo acceder a la cámara. Revisa permisos/permisos del navegador.');
+    alert('No se pudo acceder a la cámara.');
     console.error(e);
   }
 }
 startCamera();
 
-// alternar frontal/trasera
 btnFacing.addEventListener('click', async ()=>{
-  facingMode = (facingMode === 'user') ? 'environment' : 'user';
+  facingMode = (facingMode==='user') ? 'environment' : 'user';
   await startCamera();
 });
 
-// crea un pipeline espejo con canvas y devuelve {stream, stopFn}
+// pipeline espejo con canvas para que EL ARCHIVO final también quede en espejo en frontal
 function buildMirroredStream(sourceVideo, sourceStream){
   const vw = sourceVideo.videoWidth  || 640;
   const vh = sourceVideo.videoHeight || 360;
@@ -97,36 +89,36 @@ function buildMirroredStream(sourceVideo, sourceStream){
   }
   draw();
 
-  const stream = canvas.captureStream(30); // vídeo del canvas
-  // añade la pista de audio original si existe
-  try{
-    const audioTrack = sourceStream.getAudioTracks()[0];
-    if (audioTrack) stream.addTrack(audioTrack);
-  }catch(_){}
+  const stream = canvas.captureStream(30);
+  const audioTrack = sourceStream.getAudioTracks()[0];
+  if (audioTrack) stream.addTrack(audioTrack);
   const stopFn = ()=>{ if(rafId) cancelAnimationFrame(rafId); };
-
-  return {stream, stopFn};
+  return { stream, stopFn };
 }
 
-// comenzar grabación
 btnRec.addEventListener('click', async ()=>{
   if(!camStream){ alert('No hay cámara'); return; }
   chunks = [];
-  btnRec.disabled = true; btnStop.disabled = true; // se habilita cuando hay stream listo
+  btnRec.disabled = true; btnStop.disabled = true;
 
-  // Asegura que el <video> está listo para conocer dimensiones
-  if (!videoEl.videoWidth){ await new Promise(r=> setTimeout(r, 200)); }
+  // espera un frame para que videoWidth esté listo
+  if (!videoEl.videoWidth) await new Promise(r=>setTimeout(r,200));
 
   let streamToRecord = camStream;
   let stopMirror = null;
-
-  if (facingMode === 'user'){ // frontal → espejo real en el archivo
+  if (facingMode==='user'){ // frontal → graba espejado
     const built = buildMirroredStream(videoEl, camStream);
     streamToRecord = built.stream;
     stopMirror = built.stopFn;
   }
 
-  recorder = new MediaRecorder(streamToRecord, { mimeType: 'video/webm' });
+  try{
+    recorder = new MediaRecorder(streamToRecord, { mimeType:'video/webm' });
+  }catch(e){
+    // fallback sin mimeType por compatibilidad
+    recorder = new MediaRecorder(streamToRecord);
+  }
+
   recorder.ondataavailable = e=> chunks.push(e.data);
   recorder.onstop = async ()=>{
     if (stopMirror) stopMirror();
@@ -137,7 +129,10 @@ btnRec.addEventListener('click', async ()=>{
     v.controls = true; v.src = videoDataUrl;
     v.style.width='100%'; v.style.borderRadius='12px';
     prev.innerHTML = ''; prev.appendChild(v);
+
+    // ✅ habilitar “Siguiente” sí o sí
     btnNext.disabled = false;
+    btnNext.removeAttribute('disabled');
   };
 
   recorder.start();
@@ -146,38 +141,41 @@ btnRec.addEventListener('click', async ()=>{
 
   // autostop a los 5s
   setTimeout(()=>{
-    if (recorder && recorder.state === 'recording'){ recorder.stop(); hint.textContent='Grabación finalizada'; }
+    if (recorder && recorder.state==='recording'){ recorder.stop(); hint.textContent='Grabación finalizada'; }
     btnRec.disabled = false; btnStop.disabled = true;
   }, 5000);
 });
 
 btnStop.addEventListener('click', ()=>{
-  if (recorder && recorder.state === 'recording'){
+  if (recorder && recorder.state==='recording'){
     recorder.stop(); hint.textContent='Grabación finalizada';
   }
   btnRec.disabled = false; btnStop.disabled = true;
 });
 
-// guardar y pasar
 btnNext.addEventListener('click', ()=>{
-  if (typeof writeTmp === 'function') {
-    writeTmp({ videoClip: videoDataUrl || null });
-  } else {
-    sessionStorage.setItem('videoClip', videoDataUrl || '');
-  }
+  // guarda en estado temporal (aunque no exista writeTmp)
+  try{
+    if (typeof writeTmp==='function') {
+      writeTmp({ videoClip: videoDataUrl || null });
+    } else {
+      sessionStorage.setItem('videoClip', videoDataUrl || '');
+    }
+  }catch(e){ console.warn('No se pudo usar writeTmp, uso sessionStorage'); }
+
   stopAll();
-  location.href='q3.html';
+  // ✅ navega a la tercera página
+  location.href = 'q3.html';
 });
 
 function stopAll(){
-  if (recorder && recorder.state === 'recording'){ recorder.stop(); }
+  if (recorder && recorder.state==='recording'){ recorder.stop(); }
   if (camStream){ camStream.getTracks().forEach(t=>t.stop()); camStream=null; }
   if (rafId){ cancelAnimationFrame(rafId); rafId=null; }
 }
 
 window.addEventListener('pagehide', stopAll);
 
-// util (misma que usas en state.js para audio/fotos)
 function blobToDataURL(blob){
   return new Promise(res=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.readAsDataURL(blob); });
 }
