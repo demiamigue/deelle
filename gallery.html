@@ -17,7 +17,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="state.js"></script>
 <script>
-// formateo de fecha con “fallbacks”
+// contador y mensajes en página
+function showStatus(msg){
+  let s = document.getElementById('status');
+  if(!s){
+    s = document.createElement('p');
+    s.id = 'status';
+    s.className = 'hint';
+    document.querySelector('.card').insertBefore(s, document.getElementById('list'));
+  }
+  s.textContent = msg;
+}
+
 function fmtDate(row){
   const ts = row.created_at || row.inserted_at || row.createdAt || row.date || null;
   if (!ts) return '';
@@ -25,60 +36,56 @@ function fmtDate(row){
   return isNaN(d) ? '' : d.toLocaleString();
 }
 
-// lee respaldo local (opcional)
-function readLocalBackup(){
-  try { return JSON.parse(localStorage.getItem('volar_archive') || '[]'); }
-  catch { return []; }
-}
-
 async function render(){
   const list = document.getElementById('list');
-  list.innerHTML = '<p class="hint">Cargando archivo…</p>';
-
-  let rows = [];
-
-  // 1) SUPABASE (lo importante, compartido para todxs)
-  if (window.supabase){
-    const { data, error } = await supabase
-      .from('archivo')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (error){
-      console.warn('Supabase SELECT error:', error.message);
-    } else if (Array.isArray(data)) {
-      rows = data;
-    }
-  }
-
-  // 2) (opcional) Mezclamos respaldo local al final
-  const local = readLocalBackup();
-  if (local.length) rows = [...rows, ...local];
-
-  // Pintar
   list.innerHTML = '';
-  if (!rows.length){
-    list.innerHTML = '<p class="hint">Aún no hay aportes en el archivo.</p>';
+
+  if (!window.supabase){
+    showStatus('⚠️ Supabase no está cargado.');
     return;
   }
 
-  rows.forEach(e=>{
-    const when = fmtDate(e);
+  showStatus('Cargando archivo desde Supabase…');
+
+  // LEE SOLO SUPABASE (para descartar localStorage mientras depuramos)
+  const { data, error } = await supabase
+    .from('archivo')
+    .select('*')
+    .order('id', { ascending: false }); // orden por id para evitar problemas con created_at
+
+  if (error){
+    console.warn('SELECT error:', error);
+    showStatus('❌ Error al leer Supabase: ' + (error.message || error));
+    return;
+  }
+
+  if (!data || !data.length){
+    showStatus('(Archivo vacío en Supabase)');
+    return;
+  }
+
+  showStatus(`✅ ${data.length} entradas en Supabase`);
+
+  data.forEach(e=>{
+    // Si tu columna se llama distinto (p. ej. 'videoclip' o 'video_clip'), usa esta línea:
+    const urlVideo = e.videoClip ?? e.videoclip ?? e.video_clip ?? null;
+
     const tile = document.createElement('div');
     tile.className = 'tile';
     tile.innerHTML = `
-      <header><strong>${when || ''}</strong></header>
+      <header><strong>${fmtDate(e)}</strong></header>
       <div class="content">
-        <p><strong>Objeto cabeza:</strong> ${e.headText || '—'}</p>
+        <p><strong>Objeto cabeza:</strong> ${e.headText ?? '—'}</p>
         <div class="grid2" style="gap:12px">
           <div>${e.headImg ? `<img src="${e.headImg}" alt="" style="max-width:100%;border-radius:10px">` : ''}</div>
-          <div>${e.videoClip ? `<video controls src="${e.videoClip}" style="width:100%;border-radius:10px"></video>` : ''}</div>
+          <div>${urlVideo ? `<video controls src="${urlVideo}" style="width:100%;border-radius:10px"></video>` : ''}</div>
         </div>
-        ${e.ghost ? `<p style="opacity:.75;margin-top:8px"><strong> tu pie de foto?:</strong> ${e.ghost}</p>` : ''}
+        ${e.ghost ? `<p style="opacity:.75;margin-top:8px"><strong>Gesto oculto:</strong> ${e.ghost}</p>` : ''}
       </div>`;
     list.appendChild(tile);
   });
 }
+
 render();
 </script>
 </body></html>
